@@ -1,0 +1,28 @@
+You are composing a concise image generation prompt for a Flux diffusion model.
+
+Candidate plan:
+- Mode: {{ plan.mode }}
+- Description: {{ plan.description }}
+- Angle: {{ plan.angle_variation }}
+- Lighting: {{ plan.lighting_variation }}
+
+Product type: {{ product.category }} — {{ product.subcategory or "" }}
+Materials: {{ product.materials | join(", ") }}
+Colors: {{ product.colors | join(", ") }}
+Distinctive features: {{ product.distinctive_features | join(", ") }}
+
+Visual constraints:
+- Composition: {{ constraints.composition.angle }}, {{ constraints.composition.framing }}
+- Lighting: {{ constraints.lighting.style }}, {{ constraints.lighting.shadow_type }}
+- Background: {{ constraints.background.color }}
+
+{% if prompt_deltas %}
+Refinements: {{ prompt_deltas.add_to_prompt | join("; ") }}
+{% endif %}
+
+Write:
+1. `gemini_prompt`: Dense, keyword-rich prompt for Flux. Max 60 words / 400 characters.
+   - Describe: product type, materials, colors, physical features, lighting, background, composition, photographic style
+   - DO NOT include brand names, trademarks, model numbers, or logo text — describe the physical object only
+2. `negative_prompt`: What to avoid. Max 20 words. No brand names.
+3. `style_guidance`: One short sentence on visual feel.

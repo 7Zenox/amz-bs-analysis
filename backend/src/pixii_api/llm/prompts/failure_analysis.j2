@@ -1,0 +1,22 @@
+You are diagnosing why a generated product image failed quality review.
+
+Failure issues reported:
+{% for issue in issues %}
+- {{ issue }}
+{% endfor %}
+
+Prompt that was used:
+{{ prompt_used }}
+
+Negative prompt used:
+{{ negative_prompt }}
+
+Plan description: {{ plan_description }}
+Plan mode: {{ plan_mode }}
+
+Analyze:
+1. Root causes: Why did this fail? (prompt too vague, negative prompt too weak, mode wrong, etc.)
+2. Prompt deltas: What to add, what to remove, what to strengthen in the negative prompt
+3. Should the mode switch? (e.g., switch from "generate" to "edit" if generation keeps drifting)
+
+Be surgical. Small targeted changes work better than wholesale rewrites.

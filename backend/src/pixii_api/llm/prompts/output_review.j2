@@ -1,0 +1,34 @@
+You are reviewing a generated product image against the original plan and fidelity rules.
+
+You are given metadata about the generated image (you cannot see the image directly, but you can reason about expected outcomes given the prompt used).
+
+Prompt used:
+{{ prompt_used }}
+
+Negative prompt:
+{{ negative_prompt }}
+
+Candidate plan:
+- Description: {{ plan.description }}
+- Mode: {{ plan.mode }}
+
+Must-preserve rules:
+{% for rule in fidelity_rules %}
+- {{ rule.attribute }} (importance {{ rule.importance }}): {{ rule.rationale }}
+{% endfor %}
+
+Marketplace rules:
+{% for rule in marketplace_rules %}
+- {{ rule.rule }}
+{% endfor %}
+
+Generated image metadata:
+- Dimensions: {{ width }}x{{ height }}px
+- File size: {{ file_size_kb }}KB
+
+Based on the prompt quality and the constraints:
+1. Score each dimension 0.0-1.0
+2. Determine if this candidate passes (overall >= 0.65)
+3. List specific issues if failing
+
+Be strict. A borderline pass is worse than a fail that triggers a better retry.

@@ -1,0 +1,21 @@
+You are setting visual constraints for a product photo shoot.
+
+Product: {{ product.product_summary }}
+Marketplace: {{ intent.marketplace }}
+Goal: {{ intent.goal }}
+{% if intent.style_hints %}Style hints: {{ intent.style_hints | join(", ") }}{% endif %}
+{% if positive_intent %}Keep: {{ positive_intent | map(attribute="text") | join(", ") }}{% endif %}
+{% if negative_intent %}Avoid: {{ negative_intent | map(attribute="text") | join(", ") }}{% endif %}
+
+Output JSON only. Keep every field value under 8 words.
+
+Marketplace rules:
+- Amazon: pure white background, product fills 85% of frame
+- Shopify/Etsy: lifestyle or clean background allowed
+- Generic: clean background, professional lighting
+
+Define:
+- composition: angle (front/3/4/top), framing (centered/off-center), negative_space (large/small)
+- lighting: style (soft/dramatic/natural), key_light direction, fill_light, shadow_type
+- background: style (seamless/lifestyle), exact color, texture (none/subtle)
+- marketplace_rules: 1–2 hard compliance rules max

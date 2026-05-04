@@ -1,0 +1,1 @@
+- [Project: Pixii Photo Upgrader](project_pixii.md) — stateless FastAPI + Next.js ecommerce photo enhancer

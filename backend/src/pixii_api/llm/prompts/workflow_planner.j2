@@ -1,0 +1,15 @@
+Plan {{ n_candidates }} image generation candidate(s) for this product photo.
+
+Product: {{ product.product_summary }}
+Composition: {{ constraints.composition.angle }}, {{ constraints.composition.framing }}
+Lighting: {{ constraints.lighting.style }}
+Background: {{ constraints.background.color }}
+{% if prior_failures %}Avoid repeating: {{ prior_failures | join("; ") }}{% endif %}
+
+Output JSON only. Keep all string fields under 8 words.
+
+Rules:
+- Each plan must differ in angle and lighting
+- mode "generate" = create from scratch (use for bg replacement, major changes)
+- mode "edit" = modify source image (use for subtle tweaks)
+- strategy_rationale: one sentence, 15 words max
