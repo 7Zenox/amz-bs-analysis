@@ -1,12 +1,5 @@
-import { newContext, sleep } from "./browser";
-
-export interface StarDistribution {
-  five: number;
-  four: number;
-  three: number;
-  two: number;
-  one: number;
-}
+import { parse } from "node-html-parser";
+import { amazonFetch } from "./browser";
 
 export interface BsrEntry {
   rank: number;
@@ -22,7 +15,7 @@ export interface ProductDetail {
   reviewCount: number | null;
   bulletPoints: string[];
   bsrEntries: BsrEntry[];
-  starDistribution: StarDistribution | null;
+  starDistribution: { five: number; four: number; three: number; two: number; one: number } | null;
   frequentlyBoughtWith: string[];
   questionCount: number | null;
   availability: string | null;
@@ -35,100 +28,81 @@ function parsePrice(text: string): number | null {
 }
 
 export async function scrapeProductPage(asin: string, domain = "amazon.in"): Promise<ProductDetail> {
-  const ctx = await newContext();
-  const page = await ctx.newPage();
-  const url = `https://www.${domain}/dp/${asin}`;
+  const html = await amazonFetch(`https://www.${domain}/dp/${asin}`);
+  const root = parse(html);
 
-  try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await sleep(800);
+  const title = root.querySelector("#productTitle")?.text?.trim() ?? "";
 
-    const detail = await page.evaluate((asin: string) => {
-      // Title
-      const title = document.querySelector("#productTitle")?.textContent?.trim() ?? "";
+  const brand =
+    root.querySelector("#bylineInfo")?.text?.trim()
+      .replace(/^(Brand:|Visit the|Store)[\s]*/i, "")
+      .trim() ?? null;
 
-      // Brand
-      const brand =
-        document.querySelector("#bylineInfo, #brand, [data-feature-name='bylineInfo'] a")?.textContent?.trim().replace(/^(Brand:|Visit the|Store)[\s]*/i, "") ?? null;
+  const priceEl =
+    root.querySelector(".a-price.priceToPay .a-offscreen") ??
+    root.querySelector("#priceblock_ourprice") ??
+    root.querySelector("#priceblock_dealprice") ??
+    root.querySelector(".a-price .a-offscreen");
+  const price = priceEl ? parsePrice(priceEl.text) : null;
 
-      // Price
-      const priceEl = document.querySelector(".a-price.priceToPay .a-offscreen, #priceblock_ourprice, #priceblock_dealprice, .a-price .a-offscreen");
-      const price = priceEl?.textContent?.trim() ?? null;
+  const ratingEl = root.querySelector("#acrPopover");
+  const ratingText = ratingEl?.getAttribute("title") ?? "";
+  const ratingMatch = ratingText.match(/([\d.]+)\s*out of/i);
+  const rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
 
-      // Rating
-      const ratingEl = document.querySelector("#acrPopover, [data-hook='rating-out-of-text']");
-      const ratingText = ratingEl?.getAttribute("title") ?? ratingEl?.textContent ?? "";
-      const ratingMatch = ratingText.match(/([\d.]+)\s*out of/i);
-      const rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+  const reviewEl = root.querySelector("#acrCustomerReviewText");
+  const reviewText = reviewEl?.text?.replace(/,/g, "") ?? "";
+  const reviewMatch = reviewText.match(/\d+/);
+  const reviewCount = reviewMatch ? parseInt(reviewMatch[0]) : null;
 
-      // Review count
-      const reviewEl = document.querySelector("#acrCustomerReviewText, [data-hook='total-review-count']");
-      const reviewText = reviewEl?.textContent?.replace(/,/g, "") ?? "";
-      const reviewMatch = reviewText.match(/[\d]+/);
-      const reviewCount = reviewMatch ? parseInt(reviewMatch[0]) : null;
+  const bulletPoints = root
+    .querySelectorAll("#feature-bullets li span.a-list-item")
+    .map(el => el.text?.trim() ?? "")
+    .filter(t => t.length > 5 && !t.toLowerCase().includes("make sure"));
 
-      // Bullet points
-      const bulletPoints = Array.from(
-        document.querySelectorAll("#feature-bullets li span.a-list-item, #productFactsDesktopExpander li span")
-      )
-        .map((el) => el.textContent?.trim() ?? "")
-        .filter((t) => t.length > 5 && !t.toLowerCase().includes("make sure"));
-
-      // BSR entries
-      const bsrEntries: Array<{ rank: number; category: string }> = [];
-      document.querySelectorAll("#detailBulletsWrapper_feature_div li, #detailBullets_feature_div li, .a-section.a-spacing-small li").forEach((li) => {
-        const text = li.textContent ?? "";
-        if (text.toLowerCase().includes("best seller") || text.toLowerCase().includes("rank")) {
-          const matches = text.matchAll(/#([\d,]+)\s+in\s+([^(#\n]+)/gi);
-          for (const m of matches) {
-            const rank = parseInt(m[1].replace(/,/g, ""));
-            const category = m[2].trim().replace(/\s+/g, " ");
-            if (!isNaN(rank)) bsrEntries.push({ rank, category });
-          }
-        }
-      });
-
-      // Star distribution
-      let starDistribution = null;
-      const histRows = document.querySelectorAll("[data-hook='rating-histogram'] tr, #histogramTable tr, .a-histogram-row");
-      if (histRows.length >= 5) {
-        const pcts: number[] = [];
-        histRows.forEach((row) => {
-          const pctEl = row.querySelector(".a-text-right, [aria-label*='%'], .a-meter");
-          const pctText = pctEl?.getAttribute("aria-label") ?? pctEl?.textContent ?? "0";
-          const pct = parseFloat(pctText.replace(/[^0-9.]/g, "")) || 0;
-          pcts.push(pct);
-        });
-        if (pcts.length >= 5) {
-          starDistribution = { five: pcts[0], four: pcts[1], three: pcts[2], two: pcts[3], one: pcts[4] };
-        }
+  const bsrEntries: BsrEntry[] = [];
+  root.querySelectorAll("#detailBulletsWrapper_feature_div li, #detailBullets_feature_div li").forEach(li => {
+    const text = li.text ?? "";
+    if (text.toLowerCase().includes("best seller") || text.toLowerCase().includes("rank")) {
+      const matches = [...text.matchAll(/#([\d,]+)\s+in\s+([^(#\n]+)/gi)];
+      for (const m of matches) {
+        const rank = parseInt(m[1].replace(/,/g, ""));
+        const category = m[2].trim().replace(/\s+/g, " ");
+        if (!isNaN(rank)) bsrEntries.push({ rank, category });
       }
+    }
+  });
 
-      // Frequently bought together
-      const fbt: string[] = [];
-      document.querySelectorAll("[data-asin][class*='fbt'], #sims-fbt [data-asin]").forEach((el) => {
-        const a = el.getAttribute("data-asin");
-        if (a && a !== asin && a.length >= 5) fbt.push(a);
-      });
-
-      // Q&A count
-      const qaEl = document.querySelector("#askATFLink, #questionsSummary");
-      const qaText = qaEl?.textContent?.trim() ?? "";
-      const qaMatch = qaText.match(/([\d,]+)/);
-      const questionCount = qaMatch ? parseInt(qaMatch[1].replace(/,/g, "")) : null;
-
-      // Availability
-      const availability = document.querySelector("#availability span")?.textContent?.trim() ?? null;
-
-      return { title, brand, price, rating, reviewCount, bulletPoints, bsrEntries, starDistribution, frequentlyBoughtWith: fbt, questionCount, availability };
-    }, asin);
-
-    return {
-      asin,
-      ...detail,
-      price: detail.price ? parsePrice(detail.price) : null,
-    };
-  } finally {
-    await ctx.close();
+  const histRows = root.querySelectorAll("#histogramTable tr, .a-histogram-row");
+  let starDistribution = null;
+  if (histRows.length >= 5) {
+    const pcts: number[] = [];
+    histRows.forEach(row => {
+      const ariaLabel = row.querySelector("[aria-label]")?.getAttribute("aria-label") ?? "";
+      const pct = parseFloat(ariaLabel.replace(/[^0-9.]/g, "")) || 0;
+      pcts.push(pct);
+    });
+    if (pcts.length >= 5) {
+      starDistribution = { five: pcts[0], four: pcts[1], three: pcts[2], two: pcts[3], one: pcts[4] };
+    }
   }
+
+  const fbt: string[] = [];
+  root.querySelectorAll("[data-asin]").forEach(el => {
+    const a = el.getAttribute("data-asin");
+    if (a && a !== asin && a.length >= 5) fbt.push(a);
+  });
+
+  const qaEl = root.querySelector("#askATFLink");
+  const qaText = qaEl?.text?.trim() ?? "";
+  const qaMatch = qaText.match(/([\d,]+)/);
+  const questionCount = qaMatch ? parseInt(qaMatch[1].replace(/,/g, "")) : null;
+
+  const availability = root.querySelector("#availability span")?.text?.trim() ?? null;
+
+  return {
+    asin, title, brand, price, rating, reviewCount, bulletPoints,
+    bsrEntries, starDistribution, frequentlyBoughtWith: [...new Set(fbt)].slice(0, 5),
+    questionCount, availability,
+  };
 }

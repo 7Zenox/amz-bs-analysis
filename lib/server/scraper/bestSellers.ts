@@ -1,4 +1,5 @@
-import { newContext, sleep } from "./browser";
+import { parse } from "node-html-parser";
+import { amazonFetch } from "./browser";
 
 export interface BestSellerItem {
   rank: number;
@@ -10,59 +11,48 @@ export interface BestSellerItem {
   imageUrl: string | null;
 }
 
+function parsePrice(text: string): number | null {
+  const cleaned = text.replace(/[₹$€£,\s]/g, "");
+  const val = parseFloat(cleaned);
+  return isNaN(val) ? null : val;
+}
+
 export async function scrapeBestSellers(url: string): Promise<BestSellerItem[]> {
-  const ctx = await newContext();
-  const page = await ctx.newPage();
+  const html = await amazonFetch(url);
+  const root = parse(html);
+  const items: BestSellerItem[] = [];
 
-  try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForSelector("[data-asin]", { timeout: 15000 }).catch(() => {});
-    await sleep(1000);
+  root.querySelectorAll("[data-asin]").forEach((card, i) => {
+    const asin = card.getAttribute("data-asin") ?? "";
+    if (!asin || asin.length < 5) return;
 
-    const items = await page.evaluate(() => {
-      const results: Array<{
-        asin: string;
-        title: string;
-        price: number | null;
-        rating: number | null;
-        reviewCount: number | null;
-        imageUrl: string | null;
-      }> = [];
+    const titleEl =
+      card.querySelector(".p13n-sc-truncated") ??
+      card.querySelector("[class*='p13n-sc-truncated']") ??
+      card.querySelector("[class*='line-clamp']") ??
+      card.querySelector("._cDEzb_p13n-sc-css-line-clamp-3_g3dy1");
+    const title = titleEl?.text?.trim() ?? "";
+    if (!title) return;
 
-      document.querySelectorAll("[data-asin]").forEach((card, i) => {
-        const asin = card.getAttribute("data-asin") ?? "";
-        if (!asin || asin.length < 5) return;
+    const priceEl =
+      card.querySelector(".p13n-sc-price") ??
+      card.querySelector("[class*='p13n-sc-price']");
+    const price = priceEl ? parsePrice(priceEl.text) : null;
 
-        const titleEl = card.querySelector(
-          ".p13n-sc-truncated, ._cDEzb_p13n-sc-css-line-clamp-3_g3dy1, [class*='p13n-sc-truncated'], [class*='line-clamp']"
-        );
-        const title = titleEl?.textContent?.trim() ?? "";
-        if (!title) return;
+    const ratingEl = card.querySelector("[aria-label*='out of 5 stars']");
+    const ratingText = ratingEl?.getAttribute("aria-label") ?? "";
+    const ratingMatch = ratingText.match(/^([\d.]+)/);
+    const rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
 
-        const priceEl = card.querySelector(".p13n-sc-price, [class*='p13n-sc-price'], .a-price .a-offscreen");
-        const priceText = priceEl?.textContent?.trim().replace(/[₹,\s]/g, "") ?? "";
-        const price = priceText ? parseFloat(priceText) : null;
+    const reviewEl = card.querySelector(".a-size-small");
+    const reviewText = reviewEl?.text?.trim().replace(/,/g, "") ?? "";
+    const reviewCount = /^\d+/.test(reviewText) ? parseInt(reviewText) : null;
 
-        const ratingEl = card.querySelector("[aria-label*='out of 5 stars'], .a-icon-star-small .a-icon-alt");
-        const ratingText = ratingEl?.getAttribute("aria-label") ?? ratingEl?.textContent ?? "";
-        const ratingMatch = ratingText.match(/^([\d.]+)/);
-        const rating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+    const imgEl = card.querySelector("img");
+    const imageUrl = imgEl?.getAttribute("src") ?? null;
 
-        const reviewEl = card.querySelector(".a-size-small, [class*='number-of-reviews']");
-        const reviewText = reviewEl?.textContent?.trim().replace(/,/g, "") ?? "";
-        const reviewCount = /^\d+/.test(reviewText) ? parseInt(reviewText) : null;
+    items.push({ rank: i + 1, asin, title, price, rating, reviewCount, imageUrl });
+  });
 
-        const imgEl = card.querySelector("img");
-        const imageUrl = imgEl?.getAttribute("src") ?? null;
-
-        results.push({ asin, title, price, rating, reviewCount, imageUrl });
-      });
-
-      return results;
-    });
-
-    return items.map((item, i) => ({ rank: i + 1, ...item }));
-  } finally {
-    await ctx.close();
-  }
+  return items;
 }
